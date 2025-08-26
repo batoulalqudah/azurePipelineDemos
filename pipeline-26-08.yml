@@ -10,7 +10,7 @@ resources:
 
 variables:
   tag: '$(Build.BuildId)'
-  imageName: nodeapplication
+  imageName: ayat93/nodeapp
 
 stages:
 - stage: AppBuild
@@ -49,31 +49,25 @@ stages:
         containerRegistry: 'dockerhub'
         dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
         buildContext: '$(Pipeline.Workspace)/app-package'
-        repository: 'ayat93/nodeapp'
+        repository: $(imageName)
         tags: $(tag)
     
-
 - stage: Deploy
-  displayName: "Run Container on Green VM"
+  displayName: "Run Container on blue VM"
   dependsOn: DockerImageBuild
   jobs:
   - job: RunContainer
     pool:
-      name: green
+      name: blue
     steps:
     - script: |
         echo "Stopping old container if running..."
         docker rm -f nodeapp || true
 
         echo "Pulling image from Docker Hub..."
-        docker pull ayat93/nodeapp:$(tag)
+        docker pull $(imageName):$(tag)
 
 
         echo "Starting new container..."
         docker run -d -p 80:3000 --name nodeapp $(imageName):$(tag)
-      displayName: "Deploy container on Green VM"
-
-
-        echo "Starting new container..."
-        docker run -d -p 80:3000 --name nodeapp $(imageName):$(tag)
-      displayName: "Deploy container on Green VM"
+      displayName: "Deploy container on blue VM"
