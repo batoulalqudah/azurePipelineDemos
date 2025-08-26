@@ -1,5 +1,5 @@
 # Docker
-# Build and scan with Trivy
+# Build a Docker image
 # https://docs.microsoft.com/azure/devops/pipelines/languages/docker
 
 trigger:
@@ -13,7 +13,6 @@ variables:
   imageName: nodeapplication
 
 stages:
-# -------- Stage 1: AppBuild --------
 - stage: AppBuild
   displayName: "Build and Package App"
   jobs:
@@ -21,37 +20,18 @@ stages:
     pool:
       name: azure
     steps:
-    # 1. Trivy FS Scan (source code) with JSON report + caching
-    - script: |
-        docker run --rm \
-          -v $HOME/.cache/trivy:/root/.cache/ \
-          -v $(Build.SourcesDirectory):/src \
-          aquasec/trivy fs -f json -o /src/trivy-fs-report-for-package.json /src
-      displayName: "Trivy FS scan (source code, cached)"
-
-    - publish: $(Build.SourcesDirectory)/trivy-fs-report-for-package.json
-      artifact: trivy-fs-report-package
-      displayName: "Publish Trivy FS Report for the package"
-
-    # 2. Install deps
     - script: |
         npm ci
       displayName: "Install dependencies"
-
-    # 3. Package app into .tgz
     - script: |
         npm pack
         mv *.tgz $(Build.ArtifactStagingDirectory)/app.tgz
       displayName: "Packaging the app"
-
-    # 4. Publish packaged app as artifact
     - publish: $(Build.ArtifactStagingDirectory)/app.tgz
       artifact: app-package
       displayName: "Publish app.tgz"
-
-# -------- Stage 2: DockerImageBuild --------
 - stage: DockerImageBuild
-  displayName: "Build Docker Image"
+  displayName: Build image
   dependsOn: AppBuild
   jobs:
   - job: Docker_Image
@@ -59,45 +39,35 @@ stages:
     pool:
       name: azure
     steps:
-    # 1. Download app artifact
     - download: current
       artifact: app-package
       displayName: "Download app artifact"
-
-    # 2. Build Docker image
     - task: Docker@2
-      displayName: "Build an image"
+      displayName: Build and Push Docker image to Docker Hub
       inputs:
-        command: build
+        command: buildAndPush 
+        containerRegistry: 'dockerhub'
         dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
         buildContext: '$(Pipeline.Workspace)/app-package'
-        repository: $(imageName)
+        repository: 'ayat93/nodeapp'
         tags: $(tag)
-
-    # 3. Trivy scan Docker image (JSON + cached)
-    - script: |
-        docker run --rm \
-          -v $HOME/.cache/trivy:/root/.cache/ \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          aquasec/trivy image -f json -o /tmp/trivy-report-dockerImage.json $(imageName):$(tag)
-      displayName: "Trivy Image scan (cached)"
-
-    # 4. Publish Trivy image report
-    - publish: /tmp/trivy-report-dockerImage.json
-      artifact: trivy-report-dockerImage
-      displayName: "Publish Trivy Report for the docker image"
+    
 - stage: Deploy
-  displayName: "Run Container on VM"
+  displayName: "Run Container on Green VM"
   dependsOn: DockerImageBuild
   jobs:
   - job: RunContainer
     pool:
-      name: azure    
+      name: green
     steps:
     - script: |
         echo "Stopping old container if running..."
         docker rm -f nodeapp || true
 
+        echo "Pulling image from Docker Hub..."
+        docker pull ayat93/nodeapp:$(tag)
+
+
         echo "Starting new container..."
         docker run -d -p 80:3000 --name nodeapp $(imageName):$(tag)
-      displayName: "Deploy container on same VM"
+      displayName: "Deploy container on Green VM"
