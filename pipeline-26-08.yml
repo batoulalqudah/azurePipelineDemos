@@ -52,6 +52,7 @@ stages:
         repository: 'ayat93/nodeapp'
         tags: $(tag)
     
+
 - stage: Deploy
   displayName: "Run Container on Green VM"
   dependsOn: DockerImageBuild
@@ -66,6 +67,11 @@ stages:
 
         echo "Pulling image from Docker Hub..."
         docker pull ayat93/nodeapp:$(tag)
+
+
+        echo "Starting new container..."
+        docker run -d -p 80:3000 --name nodeapp $(imageName):$(tag)
+      displayName: "Deploy container on Green VM"
 
 
         echo "Starting new container..."
